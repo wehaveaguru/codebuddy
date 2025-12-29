@@ -14,10 +14,20 @@
   "contributes": {
     "commands": [
       {
-        "command": "codebuddy.helloWorld",
-        "title": "Hello World"
+        "command": "codebuddy.openchat",
+        "title": "CodeBuddy"
       }
     ]
+  },
+  "configuration": {
+    "title": "CodeBuddy",
+    "properties": {
+      "codebuddy.apiKey": {
+        "type": "string",
+        "default": "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",
+        "description": "Groq API Key from console.groq.com/keys"
+      }
+    }
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",
@@ -29,7 +39,7 @@
   },
   "devDependencies": {
     "@types/mocha": "^10.0.10",
-    "@types/node": "22.x",
+    "@types/node": "^22.19.3",
     "@types/vscode": "^1.107.0",
     "@vscode/test-cli": "^0.0.12",
     "@vscode/test-electron": "^2.5.2",
