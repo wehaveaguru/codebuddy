@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import OpenAI from 'openai';
+import Groq from 'groq-sdk';
 
 
 
@@ -16,14 +17,11 @@ export function activate(context: vscode.ExtensionContext){
 			retainContextWhenHidden: true}
 		);
 
-		panel.webview.html=
-			`<!DOCTYPE html>
-        <html>
-        <body style="padding:20px">
-        <h1>CodeBuddy Chat</h1>
-        </body>
-        </html>
-      `;
+		panel.webview.html=`
+		<!DOCTYPE html>
+		<body>
+		<h1> CodeBuddy Chat </h1>
+		</body>`
 
 	})
 
@@ -44,7 +42,14 @@ export async function sendtoGroq(webview: vscode.Webview, prompt: string){
 			baseURL:'https://api.groq.com/openai/v1'
 		})
 
-
+		const response=client.chat.completions.create({
+			model:"gpt-4-turbo-2024-04-09",
+			"messages":[{"role":"user","content":prompt}],
+			max_tokens:1000,
+			temperature:0.7
+		})
+		const ans= (await response).choices[0]?.message?.content||"NO answer";
+		webview.postMessage({command:"answer",content:ans});
 
 		
 	}
@@ -55,4 +60,6 @@ export async function sendtoGroq(webview: vscode.Webview, prompt: string){
 
 
 }
+
+
 export function deactivate() {}
