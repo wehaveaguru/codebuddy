@@ -15,9 +15,23 @@
     "commands": [
       {
         "command": "codebuddy.openchat",
-        "title": "CodeBuddy"
+        "title": "CodeBuddy",
+        "icon": "${sparkle}"
       }
-    ]
+    ],
+    "menus": {
+      "editor/title": [
+        {
+          "command": "codebuddy.openchat",
+          "group": "1_modification"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "codebuddy.openchat"
+        }
+      ]
+    }
   },
   "configuration": {
     "title": "CodeBuddy",
@@ -49,6 +63,6 @@
   },
   "dependencies": {
     "groq-sdk": "^0.37.0",
-    "openai": "^6.15.0"
+    "openai": "^4.52.0"
   }
 }
