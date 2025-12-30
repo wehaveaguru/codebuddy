@@ -9,7 +9,10 @@
   "categories": [
     "Other"
   ],
-  "activationEvents": [],
+  "activationEvents": [
+      "oncommand:codebuddy.openchat"
+  
+],
   "main": "./out/extension.js",
   "contributes": {
     "commands": [
@@ -25,24 +28,20 @@
           "command": "codebuddy.openchat",
           "group": "1_modification"
         }
-      ],
-      "commandPalette": [
-        {
-          "command": "codebuddy.openchat"
-        }
       ]
-    }
-  },
-  "configuration": {
+    },
+    "configuration": {
     "title": "CodeBuddy",
     "properties": {
-      "codebuddy.apiKey": {
+      "codebuddy.groqAPI": {
         "type": "string",
-        "default": "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",
-        "description": "Groq API Key from console.groq.com/keys"
+        "default": "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",
+        "description": "Groq API Key from console.groq.com/keys",
+        "markdownDescription": "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"
       }
     }
-  },
+  }
+},
   "scripts": {
     "vscode:prepublish": "npm run compile",
     "compile": "tsc -p ./",
@@ -66,3 +65,4 @@
     "openai": "^4.52.0"
   }
 }
+
