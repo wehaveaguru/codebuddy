@@ -8,7 +8,7 @@ export function activate(context: vscode.ExtensionContext){
 	console.log("Extension is running");
 	let disposable=vscode.commands.registerCommand("codebuddy.openchat",async () => {
 		
-		
+	context.globalState.get("chatHistory") as string;
 
 
 		
