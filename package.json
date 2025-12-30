@@ -10,9 +10,8 @@
     "Other"
   ],
   "activationEvents": [
-      "oncommand:codebuddy.openchat"
-  
-],
+    "oncommand:codebuddy.openchat"
+  ],
   "main": "./out/extension.js",
   "contributes": {
     "commands": [
@@ -31,17 +30,17 @@
       ]
     },
     "configuration": {
-    "title": "CodeBuddy",
-    "properties": {
-      "codebuddy.groqAPI": {
-        "type": "string",
-        "default": "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",
-        "description": "Groq API Key from console.groq.com/keys",
-        "markdownDescription": "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"
+      "title": "CodeBuddy",
+      "properties": {
+        "codebuddy.groqAPI": {
+          "type": "string",
+          "default": "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",
+          "description": "Groq API Key from console.groq.com/keys",
+          "markdownDescription": "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"
+        }
       }
     }
-  }
-},
+  },
   "scripts": {
     "vscode:prepublish": "npm run compile",
     "compile": "tsc -p ./",
@@ -62,7 +61,6 @@
   },
   "dependencies": {
     "groq-sdk": "^0.37.0",
-    "openai": "^4.52.0"
+    "openai": "^6.15.0"
   }
 }
-

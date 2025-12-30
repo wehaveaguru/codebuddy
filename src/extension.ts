@@ -3,6 +3,7 @@ import OpenAI from 'openai';
 
 
 
+
 export function activate(context: vscode.ExtensionContext){
 	console.log("Extension is running");
 	let disposable=vscode.commands.registerCommand("codebuddy.openchat",async () => {
@@ -27,6 +28,8 @@ export function activate(context: vscode.ExtensionContext){
 
 			}
 		);
+
+    
 
 		
 
@@ -72,7 +75,11 @@ async function sendtoGroq(webview: vscode.Webview, prompt: string){
 function getChatHTML(): string {
   return `<!DOCTYPE html>
 <html>
+<head>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+</head>
 <body style="padding:20px;height:100vh;font-family:var(--vscode-font-family);">
+  <h1>CodeBuddy Chat</h1>
  
   <div id="messages" style="height:70%;overflow-y:auto;border:1px solid var(--vscode-panel-border);padding:15px;margin-bottom:10px;border-radius:8px;"></div>
   
@@ -89,22 +96,20 @@ function getChatHTML(): string {
     const promptInput = document.getElementById('prompt');
     const status = document.getElementById('status');
 
-    // ADD MESSAGE BUBBLES
     function addMessage(sender, text) {
       const div = document.createElement('div');
       div.style.cssText = \`
-        margin:12px 0; padding:12px; border-radius:8px;
+        margin:12px 0; padding:12px; border-radius:8px;overflow-x:auto;word-wrap:break-word;max-height:500px;overflow-y:auto;max-width:60%;
         \${sender === 'user' ? 
           'background:var(--vscode-button-background); color:var(--vscode-button-foreground); margin-left:auto; max-width:80%; text-align:right' : 
-          'background:var(--vscode-textBlockQuote-background); color:var(--vscode-textBlockQuote-foreground); max-width:80%'
+          'background:var(--vscode-textBlockQuote-background); color:var(--vscode-textBlockQuote-foreground); max-width:80%;'
         }
       \`;
-      div.textContent = text;
+      div.innerHTML = marked.parse(text);
       messages.appendChild(div);
       messages.scrollTop = messages.scrollHeight;
     }
 
-    // SEND BUTTON + ENTER KEY
     function send() {
       const text = promptInput.value.trim();
       if (!text) return;
@@ -113,7 +118,6 @@ function getChatHTML(): string {
       vscode.postMessage({ command: 'groqchat', prompt: text });
     }
 
-    // LISTEN FOR GROQ RESPONSES
     window.addEventListener('message', event => {
       const message = event.data;
       if (message.command === 'response') {
@@ -127,10 +131,10 @@ function getChatHTML(): string {
       }
     });
 
-    // CTRL+ENTER TO SEND
     promptInput.addEventListener('keydown', e => {
       if ( e.key === 'Enter') send();
     });
+    
 
     // WELCOME MESSAGE
     addMessage('bot', ' CodeBuddy ready! Ask coding questions...');
