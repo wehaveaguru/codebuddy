@@ -14,32 +14,33 @@
   ],
   "main": "./out/extension.js",
   "contributes": {
-    "commands": [
-      {
-        "command": "codebuddy.openchat",
-        "title": "CodeBuddy",
-        "icon": "${sparkle}"
-      }
-    ],
-    "menus": {
-      "editor/title": [
+    "viewsContainers": {
+      "activitybar": [
         {
-          "command": "codebuddy.openchat",
-          "group": "1_modification"
+          "id": "codebuddyext",
+          "title": "CodeBuddy",
+          "icon": "$(lightbulb)"
         }
       ]
     },
-    "configuration": {
-      "title": "CodeBuddy",
-      "properties": {
-        "codebuddy.groqAPI": {
-          "type": "string",
-          "default": "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",
-          "description": "Groq API Key from console.groq.com/keys",
-          "markdownDescription": "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"
+    "views": {
+      "codebuddyext":[
+        {
+          "id":"codebuddyview",
+          "name":"",
+          "icon": "$(lightbulb)",
+          "type": "webview"
         }
+      ]
+    },
+    "commands": [
+      {
+        "command": "codebuddy.openchat",
+        "title": "CodeBuddy"
       }
-    }
+    ]
+    
+
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",
