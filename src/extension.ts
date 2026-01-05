@@ -7,27 +7,37 @@ import { stringify } from 'querystring';
 
 export class ExtProvider implements vscode.WebviewViewProvider {
   private _view?: vscode.WebviewView;
-  private _extensionUri?: vscode.Uri;
+  private conversation: { role: "system" | "user" | "assistant"; content: string}[] =[
+    {
+      role:"system",
+      content: "You are Coedbuddy, a useful AI assistant"
+    }
+  ]
+  
 
-  constructor (private extensionUri: vscode.Uri){
-    this._extensionUri=extensionUri;
-  }
+  constructor (private readonly _extensionUri: vscode.Uri){}
 
   resolveWebviewView(webviewView: vscode.WebviewView, context: vscode.WebviewViewResolveContext, token: vscode.CancellationToken): Thenable<void> | void {
     this._view=webviewView;
 
     webviewView.webview.options={
-      
-      enableScripts:true,
+      localResourceRoots:[this._extensionUri],
+      enableScripts:true, 
       
     }
+
+
+
+     
+
 
     this._view.webview.onDidReceiveMessage(async (message)=> {
       switch (message.command){
         case "groqChat":
           await this.handleQuery(message.prompt);
-      }
-    })
+        
+        }
+      })
 
     webviewView.webview.html=getChatHTML();
   }
@@ -42,9 +52,21 @@ export class ExtProvider implements vscode.WebviewViewProvider {
       baseURL:'https://api.groq.com/openai/v1'
     })
 
+    this.conversation.push(
+      {
+        role: "user",
+        content: prompt
+      }
+    )
+
+    if (this.conversation.length>21){
+      this.conversation=[this.conversation[0],
+      ...this.conversation.slice(-20)];
+    }
+
     const response=client.chat.completions.create({
 			model:'llama-3.3-70b-versatile',
-			"messages":[{"role":"user","content":prompt}],
+			"messages":this.conversation,
 			max_tokens:1000,
 			temperature:0.7
 		})
@@ -52,12 +74,11 @@ export class ExtProvider implements vscode.WebviewViewProvider {
 		this._view?.webview.postMessage({command:"response",content:ans});
 	}
 
-	catch(error:any){
-		this._view?.webview.postMessage({command: "error",content:`${error.message}`})
-	}
+	
 
 
 }
+
 
 
 export function activate(context: vscode.ExtensionContext){
@@ -133,9 +154,9 @@ function getChatHTML(): string {
       const text = promptInput.value.trim();
       if (!text) return;
       addMessage('user', text);
-      promptInput.value = '';
       status.textContent = 'Thinking...';
-      vscode.postMessage({ command: 'groqChat', prompt: text });
+      vscode.postMessage({ command: 'groqChat', prompt: text});
+      promptInput.value = '';
     }
 
     window.addEventListener('message', event => {
