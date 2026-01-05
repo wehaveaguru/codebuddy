@@ -2,15 +2,15 @@ import * as vscode from 'vscode';
 import OpenAI from 'openai';
 import * as path from 'path';
 import * as fs from 'fs';
-
+import { stringify } from 'querystring';
 
 
 export class ExtProvider implements vscode.WebviewViewProvider {
   private _view?: vscode.WebviewView;
-  private conversation: { role: "system" | "user" | "assistant"; content: string}[] =[
+  private conversation: {role:"user"|"system"|"assistant"; content: string}[]=[
     {
       role:"system",
-      content: "You are Coedbuddy, a useful AI assistant"
+      content: "You are codebuddy, an assistant for coding"
     }
   ]
   
@@ -27,7 +27,7 @@ export class ExtProvider implements vscode.WebviewViewProvider {
     }
 
 
-
+    this.importHistory()
      
 
 
@@ -35,11 +35,18 @@ export class ExtProvider implements vscode.WebviewViewProvider {
       switch (message.command){
         case "groqChat":
           await this.handleQuery(message.prompt);
-        
+
         }
       })
 
     webviewView.webview.html=getChatHTML();
+    setTimeout(() => {
+      this._view?.webview.postMessage({
+        command:"writeHistory",
+        content: this.conversation.filter(m => m.role ! == "system")
+      })
+    })
+
   }
 
   private async handleQuery(prompt: string) {
@@ -52,17 +59,12 @@ export class ExtProvider implements vscode.WebviewViewProvider {
       baseURL:'https://api.groq.com/openai/v1'
     })
 
-    this.conversation.push(
-      {
-        role: "user",
-        content: prompt
-      }
-    )
+    this.conversation.push({
+      role: "user",
+      content: prompt
+    })
 
-    if (this.conversation.length>21){
-      this.conversation=[this.conversation[0],
-      ...this.conversation.slice(-20)];
-    }
+    this.writeHistory(this.conversation);
 
     const response=client.chat.completions.create({
 			model:'llama-3.3-70b-versatile',
@@ -71,23 +73,62 @@ export class ExtProvider implements vscode.WebviewViewProvider {
 			temperature:0.7
 		})
 		const ans= (await response).choices[0]?.message?.content||"NO answer";
+    this.conversation.push({
+      role: "assistant",
+      content: ans
+    })
+    this.writeHistory(this.conversation);
 		this._view?.webview.postMessage({command:"response",content:ans});
+
 	}
 
-  private getPath() {
+
+
+  private importHistory() {
+    const path = this.getFilePath();
+    if (!path) return undefined;
+
+    if (fs.existsSync(path)){
+      const history=fs.readFileSync(path,'utf-8');
+      try{
+        const parse=JSON.parse(history);
+        if (Array.isArray(parse)) {
+          this.conversation = [
+          { role: "system", content: "You are codebuddy, an assistant for coding" },
+            ...parse
+          ];
+}
+        
+      }
+      catch{
+        console.log("HIstory not parsed")
+      }
+    }
+
+    console.log(path);
+  }
+
+  private writeHistory(content: any){
+    const filepath = this.getFilePath();
+    if (!filepath) return undefined;
+
+    fs.mkdirSync(path.dirname(filepath),{recursive:true});
+
+    fs.writeFileSync(filepath,JSON.stringify(content, null,2),'utf-8');
+  }
+
+  private getFilePath(){
     const workspace=vscode.workspace.workspaceFolders?.[0];
     if (!workspace) return undefined;
 
-    return path.join (
+    return path.join(
       workspace.uri.fsPath,
-      '.vscode',
-      'codebuddy-history.json'
+      ".vscode",
+      "codebuddy.json"
     )
   }
 
   
-
-	
 
 
 }
@@ -182,6 +223,12 @@ function getChatHTML(): string {
         addMessage('bot', message.content);
         status.textContent = '';
       }
+
+      else if (message.command === 'loadHistory') {
+      chatHistory = message.content;
+      renderChatHistory();
+      }
+
     });
 
     sendBtn.addEventListener('click', () => send());
