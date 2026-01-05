@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import OpenAI from 'openai';
 import * as path from 'path';
 import * as fs from 'fs';
-import { stringify } from 'querystring';
+
 
 
 export class ExtProvider implements vscode.WebviewViewProvider {
@@ -73,6 +73,19 @@ export class ExtProvider implements vscode.WebviewViewProvider {
 		const ans= (await response).choices[0]?.message?.content||"NO answer";
 		this._view?.webview.postMessage({command:"response",content:ans});
 	}
+
+  private getPath() {
+    const workspace=vscode.workspace.workspaceFolders?.[0];
+    if (!workspace) return undefined;
+
+    return path.join (
+      workspace.uri.fsPath,
+      '.vscode',
+      'codebuddy-history.json'
+    )
+  }
+
+  
 
 	
 
