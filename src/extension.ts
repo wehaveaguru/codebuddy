@@ -15,7 +15,15 @@ export class ExtProvider implements vscode.WebviewViewProvider {
   ]
   
 
-  constructor (private readonly _extensionUri: vscode.Uri){}
+  constructor (private readonly _extensionUri: vscode.Uri, private readonly context: vscode.ExtensionContext){
+    const saved = this.context.globalState.get<{ role: any, content: string }[]>('chatHistory');
+    
+    if (saved && saved.length > 0) {
+      this.conversation = saved;
+    } else {
+      this.importHistory();
+    }
+  }
 
   resolveWebviewView(webviewView: vscode.WebviewView, context: vscode.WebviewViewResolveContext, token: vscode.CancellationToken): Thenable<void> | void {
     this._view=webviewView;
@@ -23,14 +31,10 @@ export class ExtProvider implements vscode.WebviewViewProvider {
     webviewView.webview.options={
       localResourceRoots:[this._extensionUri],
       enableScripts:true, 
-      
+
     }
     
-
-    this.importHistory();
-     
-
-
+    
     this._view.webview.onDidReceiveMessage(async (message)=> {
       switch (message.command){
         case "groqChat":
@@ -42,11 +46,23 @@ export class ExtProvider implements vscode.WebviewViewProvider {
     webviewView.webview.html=getChatHTML();
     setTimeout(() => {
       this._view?.webview.postMessage({
-        command:"writeHistory",
-        content: this.conversation.filter(m => m.role ! == "system")
+        command:"loadHistory",
+        content: this.conversation.filter(m => m.role !== "system")
       })
     })
 
+    this._view.onDidChangeVisibility(()=> {
+      if (!this._view?.visible){
+        this.importHistory;
+      }
+    })
+
+    
+
+  }
+
+  private saveToGlobalState() {
+    this.context.globalState.update('chatHistory', this.conversation);
   }
 
   private async handleQuery(prompt: string) {
@@ -59,10 +75,13 @@ export class ExtProvider implements vscode.WebviewViewProvider {
       baseURL:'https://api.groq.com/openai/v1'
     })
 
+    
+
     this.conversation.push({
       role: "user",
       content: prompt
     })
+    this.saveToGlobalState();
 
     this.writeHistory(this.conversation);
 
@@ -77,7 +96,10 @@ export class ExtProvider implements vscode.WebviewViewProvider {
       role: "assistant",
       content: ans
     })
+    this.saveToGlobalState();
+    
     this.writeHistory(this.conversation);
+    
 		this._view?.webview.postMessage({command:"response",content:ans});
 
 	}
@@ -93,18 +115,18 @@ export class ExtProvider implements vscode.WebviewViewProvider {
       try{
         const parse=JSON.parse(history);
         if (Array.isArray(parse)) {
-          this.conversation = [
-          { role: "system", content: "You are codebuddy, an assistant for coding" },
-            ...parse
-          ];
+          this.conversation = parse.some(m => m.role === 'system') 
+          ? parse 
+          : [{ role: "system", content: "You are codebuddy, an assistant for coding" }, ...parse];
 }
         
       }
       catch{
         console.log("HIstory not parsed")
       }
-    }
 
+    }
+    
     console.log(path);
   }
 
@@ -138,10 +160,13 @@ export class ExtProvider implements vscode.WebviewViewProvider {
 export function activate(context: vscode.ExtensionContext){
 	console.log("Extension is running");
 
-  const provider= new ExtProvider(context.extensionUri);
+  const provider= new ExtProvider(context.extensionUri,context);
 
   context.subscriptions.push(
-    vscode.window.registerWebviewViewProvider("codebuddyview",provider) 
+    vscode.window.registerWebviewViewProvider("codebuddyview",provider,{
+      webviewOptions: {
+        retainContextWhenHidden: true}
+    }) 
   )
 }
 
@@ -228,6 +253,7 @@ function getChatHTML(): string {
       chatHistory = message.content;
       renderChatHistory();
       }
+
 
     });
 
