@@ -15,15 +15,7 @@ export class ExtProvider implements vscode.WebviewViewProvider {
   ]
   
 
-  constructor (private readonly _extensionUri: vscode.Uri, private readonly context: vscode.ExtensionContext){
-    const saved = this.context.globalState.get<{ role: any, content: string }[]>('chatHistory');
-    
-    if (saved && saved.length > 0) {
-      this.conversation = saved;
-    } else {
-      this.importHistory();
-    }
-  }
+  constructor (private readonly _extensionUri: vscode.Uri) {}
 
   resolveWebviewView(webviewView: vscode.WebviewView, context: vscode.WebviewViewResolveContext, token: vscode.CancellationToken): Thenable<void> | void {
     this._view=webviewView;
@@ -51,19 +43,13 @@ export class ExtProvider implements vscode.WebviewViewProvider {
       })
     })
 
-    this._view.onDidChangeVisibility(()=> {
-      if (!this._view?.visible){
-        this.importHistory;
-      }
-    })
+
 
     
 
   }
 
-  private saveToGlobalState() {
-    this.context.globalState.update('chatHistory', this.conversation);
-  }
+ 
 
   private async handleQuery(prompt: string) {
     const apiKey ="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";
@@ -81,7 +67,7 @@ export class ExtProvider implements vscode.WebviewViewProvider {
       role: "user",
       content: prompt
     })
-    this.saveToGlobalState();
+    
 
     this.writeHistory(this.conversation);
 
@@ -96,7 +82,7 @@ export class ExtProvider implements vscode.WebviewViewProvider {
       role: "assistant",
       content: ans
     })
-    this.saveToGlobalState();
+    
     
     this.writeHistory(this.conversation);
     
@@ -106,34 +92,15 @@ export class ExtProvider implements vscode.WebviewViewProvider {
 
 
 
-  private importHistory() {
-    const path = this.getFilePath();
-    if (!path) return undefined;
 
-    if (fs.existsSync(path)){
-      const history=fs.readFileSync(path,'utf-8');
-      try{
-        const parse=JSON.parse(history);
-        if (Array.isArray(parse)) {
-          this.conversation = parse.some(m => m.role === 'system') 
-          ? parse 
-          : [{ role: "system", content: "You are codebuddy, an assistant for coding" }, ...parse];
-}
-        
-      }
-      catch{
-        console.log("HIstory not parsed")
-      }
-
-    }
-    
-    console.log(path);
-  }
 
   private writeHistory(content: any){
     const filepath = this.getFilePath();
     if (!filepath) return undefined;
 
+    if (content.length>21){
+      content=content.slice(0,21);
+    }
     fs.mkdirSync(path.dirname(filepath),{recursive:true});
 
     fs.writeFileSync(filepath,JSON.stringify(content, null,2),'utf-8');
@@ -160,7 +127,7 @@ export class ExtProvider implements vscode.WebviewViewProvider {
 export function activate(context: vscode.ExtensionContext){
 	console.log("Extension is running");
 
-  const provider= new ExtProvider(context.extensionUri,context);
+  const provider= new ExtProvider(context.extensionUri);
 
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider("codebuddyview",provider,{
@@ -179,18 +146,43 @@ function getChatHTML(): string {
 <head>
   <meta charset="UTF-8" />
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+
+  <style>
+  body { padding: 20px; height: 100vh; font-family: var(--vscode-font-family); color: var(--vscode-foreground); }
+    #messages { height: 75%; overflow-y: auto; border: 1px solid var(--vscode-panel-border); padding: 15px; margin-bottom: 10px; border-radius: 8px; }
+    
+    
+    pre { position: relative; background: #1e1e1e; padding: 10px; border-radius: 5px; overflow-x: auto; }
+    code { font-family: var(--vscode-editor-font-family); font-size: 13px; }
+    
+    
+    .copy-btn {
+      position: absolute; top: 5px; right: 5px;
+      padding: 4px 8px; font-size: 10px; cursor: pointer;
+      background: var(--vscode-button-background); color: var(--vscode-button-foreground);
+      border: none; border-radius: 4px; opacity: 0.7;
+    }
+    .copy-btn:hover { opacity: 1; }
+
+    .msg-bubble { margin: 12px 0; padding: 12px; border-radius: 8px; max-width: 85%; word-wrap: break-word; }
+    .user { background: var(--vscode-button-background); color: var(--vscode-button-foreground); margin-left: auto; }
+    .bot { background: var(--vscode-textBlockQuote-background); color: var(--vscode-foreground); border: 1px solid var(--vscode-panel-border); }
+  </style>
 </head>
 <body style="padding:20px;height:100vh;font-family:var(--vscode-font-family);">
   <h1>CodeBuddy Chat</h1>
 
   <div id="messages" style="height:70%;overflow-y:auto;border:1px solid var(--vscode-panel-border);padding:15px;margin-bottom:10px;border-radius:8px;"></div>
 
+<div style="display:flex; gap: 8px;">
   <input id="prompt"
          style="width:70%;padding:12px;border:1px solid var(--vscode-input-border);border-radius:6px;font-size:14px;"
          placeholder="Ask Groq anything... (Press Enter)">
   <button id="sendBtn"
           style="padding:12px 20px;margin-left:8px;border:none;border-radius:6px;background:var(--vscode-button-background);color:var(--vscode-button-foreground);cursor:pointer;">
-    Send
+   </div> 
   </button>
 
   <div id="status" style="margin-top:8px;font-style:italic;color:var(--vscode-descriptionForeground);"></div>
@@ -204,23 +196,42 @@ function getChatHTML(): string {
 
     let chatHistory = [];
 
+    marked.setOptions({
+      highlight: function(code, lang) {
+        const language = hljs.getLanguage(lang) ? lang : 'plaintext';
+        return hljs.highlight(code, { language }).value;
+      }
+    });
+
     function renderChatHistory() {
       messagesEl.innerHTML = '';
-
-      for (const msg of chatHistory) {
+      chatHistory.forEach(msg => {
         const div = document.createElement('div');
-        div.style.cssText = \`
-          margin:12px 0; padding:12px; border-radius:8px; overflow-x:auto; word-wrap:break-word;
-          max-height:500px; overflow-y:auto; max-width:60%;
-          \${msg.role === 'user'
-            ? 'background:var(--vscode-button-background); color:var(--vscode-button-foreground); margin-left:auto; max-width:80%; text-align:right'
-            : 'background:var(--vscode-textBlockQuote-background); color:var(--vscode-textBlockQuote-foreground); max-width:80%;'
-          }
-        \`;
+        div.className = 'msg-bubble ' + (msg.role === 'user' ? 'user' : 'bot');
+        
         div.innerHTML = marked.parse(msg.content);
-        messagesEl.appendChild(div);
-      }
+        
+        
+        div.querySelectorAll('pre').forEach(pre => {
 
+        const codeEl = pre.querySelector('code');
+        const isActualCode = codeEl.className.includes('language-') || codeEl.classList.contains('hljs');
+
+        if (isActualCode) {
+          const btn = document.createElement('button');
+          btn.innerText = 'Copy';
+          btn.className = 'copy-btn';
+          btn.onclick = () => {
+            const code = pre.querySelector('code').innerText;
+            navigator.clipboard.writeText(code);
+            btn.innerText = 'Copied!';
+            setTimeout(() => btn.innerText = 'Copy', 2000);
+          };
+          pre.appendChild(btn);}
+        });
+
+        messagesEl.appendChild(div);
+      });
       messagesEl.scrollTop = messagesEl.scrollHeight;
     }
 
