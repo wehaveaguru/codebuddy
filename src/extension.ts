@@ -25,9 +25,9 @@ export class ExtProvider implements vscode.WebviewViewProvider {
       enableScripts:true, 
       
     }
+    
 
-
-    this.importHistory()
+    this.importHistory();
      
 
 
