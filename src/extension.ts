@@ -3,6 +3,7 @@ import OpenAI from 'openai';
 import * as path from 'path';
 import * as fs from 'fs';
 import { stringify } from 'querystring';
+import * as crypto from 'crypto';
 
 
 export class ExtProvider implements vscode.WebviewViewProvider {
@@ -15,17 +16,26 @@ export class ExtProvider implements vscode.WebviewViewProvider {
   ]
   
 
-  constructor (private readonly _extensionUri: vscode.Uri) {}
+  constructor (private readonly _extensionUri: vscode.Uri,private readonly _context: vscode.ExtensionContext) {
+    this.conversation=this.readHistory();
+    const workspaceListener = vscode.workspace.onDidChangeWorkspaceFolders(() => {
+      this.refreshHistory();
+    });
+
+    this._context.subscriptions.push(workspaceListener);
+  }
 
   resolveWebviewView(webviewView: vscode.WebviewView, context: vscode.WebviewViewResolveContext, token: vscode.CancellationToken): Thenable<void> | void {
     this._view=webviewView;
 
-    webviewView.webview.options={
+    this._view.webview.options={
       localResourceRoots:[this._extensionUri],
-      enableScripts:true, 
+      enableScripts:true
 
     }
-    
+
+   
+
     
     this._view.webview.onDidReceiveMessage(async (message)=> {
       switch (message.command){
@@ -42,11 +52,6 @@ export class ExtProvider implements vscode.WebviewViewProvider {
         content: this.conversation.filter(m => m.role !== "system")
       })
     })
-
-
-
-    
-
   }
 
  
@@ -60,6 +65,7 @@ export class ExtProvider implements vscode.WebviewViewProvider {
       apiKey,
       baseURL:'https://api.groq.com/openai/v1'
     })
+
 
     
 
@@ -88,19 +94,40 @@ export class ExtProvider implements vscode.WebviewViewProvider {
     
 		this._view?.webview.postMessage({command:"response",content:ans});
 
+
 	}
 
+private readHistory(): any[] {
+    const filepath = this.getFilePath();
+    
+    if (!filepath || !fs.existsSync(filepath)) {
+        return [{
+            role: "system",
+            content: "You are codebuddy, an assistant for coding"
+        }];
+    }
 
+    try {
+        const data = fs.readFileSync(filepath, 'utf-8');
+        return JSON.parse(data);
+    } catch (err) {
+        return [{ role: "system", content: "You are codebuddy, an assistant for coding" }];
+    }
+}
 
-
+  private refreshHistory(){
+    this.conversation=this.readHistory();
+    
+    this._view?.webview.postMessage({
+      command:"loadHistory",
+      content: this.conversation.filter(m=> m.role !== "system")
+    })
+  }
 
   private writeHistory(content: any){
     const filepath = this.getFilePath();
     if (!filepath) return undefined;
 
-    if (content.length>21){
-      content=content.slice(0,21);
-    }
     fs.mkdirSync(path.dirname(filepath),{recursive:true});
 
     fs.writeFileSync(filepath,JSON.stringify(content, null,2),'utf-8');
@@ -109,12 +136,15 @@ export class ExtProvider implements vscode.WebviewViewProvider {
   private getFilePath(){
     const workspace=vscode.workspace.workspaceFolders?.[0];
     if (!workspace) return undefined;
+    
+    
 
     return path.join(
       workspace.uri.fsPath,
       ".vscode",
-      "codebuddy.json"
-    )
+      "chat-histories",
+      `codebuddy.json`
+    );
   }
 
   
@@ -127,7 +157,9 @@ export class ExtProvider implements vscode.WebviewViewProvider {
 export function activate(context: vscode.ExtensionContext){
 	console.log("Extension is running");
 
-  const provider= new ExtProvider(context.extensionUri);
+  const provider= new ExtProvider(context.extensionUri,context);  
+
+
 
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider("codebuddyview",provider,{
@@ -181,9 +213,10 @@ function getChatHTML(): string {
          style="width:70%;padding:12px;border:1px solid var(--vscode-input-border);border-radius:6px;font-size:14px;"
          placeholder="Ask Groq anything... (Press Enter)">
   <button id="sendBtn"
-          style="padding:12px 20px;margin-left:8px;border:none;border-radius:6px;background:var(--vscode-button-background);color:var(--vscode-button-foreground);cursor:pointer;">
-   </div> 
+          style="padding:12px 20px;margin-left:8px;border:none;border-radius:6px;background:var(--vscode-button-background);color:var(--vscode-button-foreground);cursor:pointer;"> 
+          Send 
   </button>
+  </div>
 
   <div id="status" style="margin-top:8px;font-style:italic;color:var(--vscode-descriptionForeground);"></div>
 
