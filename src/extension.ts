@@ -3,7 +3,7 @@ import OpenAI from 'openai';
 import * as path from 'path';
 import * as fs from 'fs';
 import { stringify } from 'querystring';
-import * as crypto from 'crypto';
+
 
 
 export class ExtProvider implements vscode.WebviewViewProvider {
@@ -27,6 +27,7 @@ export class ExtProvider implements vscode.WebviewViewProvider {
 
   resolveWebviewView(webviewView: vscode.WebviewView, context: vscode.WebviewViewResolveContext, token: vscode.CancellationToken): Thenable<void> | void {
     this._view=webviewView;
+    
 
     this._view.webview.options={
       localResourceRoots:[this._extensionUri],
@@ -35,14 +36,15 @@ export class ExtProvider implements vscode.WebviewViewProvider {
     }
 
    
-
+    
     
     this._view.webview.onDidReceiveMessage(async (message)=> {
-      switch (message.command){
-        case "groqChat":
-          await this.handleQuery(message.prompt);
 
-        }
+      switch (message.command){
+        case 'groqChat':
+          await this.handleQuery(message.prompt,message.model)
+          break;
+      }
       })
 
     webviewView.webview.html=getChatHTML();
@@ -52,21 +54,24 @@ export class ExtProvider implements vscode.WebviewViewProvider {
         content: this.conversation.filter(m => m.role !== "system")
       })
     })
+
+    
   }
 
  
 
-  private async handleQuery(prompt: string) {
-    const apiKey ="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";
+  private async handleQuery(prompt: string, model? : string) {
+    
+    const apiKey ="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"
     if (!apiKey){
       this._view?.webview.postMessage([{command:"error",content:"ApiKey Not found"}])
     }
     const client= new OpenAI({
       apiKey,
-      baseURL:'https://api.groq.com/openai/v1'
+      baseURL:'https://openrouter.ai/api/v1'
     })
 
-
+    
     
 
     this.conversation.push({
@@ -76,23 +81,30 @@ export class ExtProvider implements vscode.WebviewViewProvider {
     
 
     this.writeHistory(this.conversation);
-
-    const response=client.chat.completions.create({
-			model:'llama-3.3-70b-versatile',
-			"messages":this.conversation,
+    try {
+    const response= await client.chat.completions.create({
+			model: model || 'anthropic/claude-3.5-sonnet',
+			messages:this.conversation,
 			max_tokens:1000,
 			temperature:0.7
 		})
-		const ans= (await response).choices[0]?.message?.content||"NO answer";
+    
+		const ans=  response.choices[0]?.message?.content||"NO answer";
     this.conversation.push({
       role: "assistant",
       content: ans
     })
-    
+  
+  
     
     this.writeHistory(this.conversation);
     
 		this._view?.webview.postMessage({command:"response",content:ans});
+  }
+  catch (error)  {
+    console.error(error); 
+    this._view?.webview.postMessage({command:"error",error:"Error in sending the message" })
+  }
 
 
 	}
@@ -161,12 +173,15 @@ export function activate(context: vscode.ExtensionContext){
 
 
 
+
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider("codebuddyview",provider,{
       webviewOptions: {
         retainContextWhenHidden: true}
     }) 
   )
+
+  
 }
 
 
@@ -189,6 +204,9 @@ function getChatHTML(): string {
     pre { position: relative; background: #1e1e1e; padding: 10px; border-radius: 5px; overflow-x: auto; }
     code { font-family: var(--vscode-editor-font-family); font-size: 13px; }
     
+   .editable {
+  outline: none;
+        }     
     
     .copy-btn {
       position: absolute; top: 5px; right: 5px;
@@ -204,14 +222,21 @@ function getChatHTML(): string {
   </style>
 </head>
 <body style="padding:20px;height:100vh;font-family:var(--vscode-font-family);">
-  <h1>CodeBuddy Chat</h1>
+  <h1 id="title" contenteditable="true" class="editable">CodeBuddy Chat</h1>
 
   <div id="messages" style="height:70%;overflow-y:auto;border:1px solid var(--vscode-panel-border);padding:15px;margin-bottom:10px;border-radius:8px;"></div>
-
+<div style="display:flex; flex-direction: column; gap: 8px;">
+  <select id="modelSelect" 
+          style="width: 100%; padding: 4px; background: var(--vscode-dropdown-background); color: var(--vscode-dropdown-foreground); border: 1px solid var(--vscode-dropdown-border); border-radius: 4px;">
+    <option value="meta-llama/llama-3.3-70b-instruct">Llama</option>
+    <option value="mistralai/mixtral-8x7b-32768">Mistral Ai</option>
+    <option value="gemma-2-9b-it">Gemma</option>
+  </select>
+</div>
 <div style="display:flex; gap: 8px;">
   <input id="prompt"
          style="width:70%;padding:12px;border:1px solid var(--vscode-input-border);border-radius:6px;font-size:14px;"
-         placeholder="Ask Groq anything... (Press Enter)">
+         placeholder="Ask anything... (Press Enter)">
   <button id="sendBtn"
           style="padding:12px 20px;margin-left:8px;border:none;border-radius:6px;background:var(--vscode-button-background);color:var(--vscode-button-foreground);cursor:pointer;"> 
           Send 
@@ -226,6 +251,22 @@ function getChatHTML(): string {
     const promptInput = document.getElementById('prompt');
     const sendBtn = document.getElementById('sendBtn');
     const status = document.getElementById('status');
+    const model = document.getElementById('modelSelect');
+    const title = document.getElementById('title');
+    title.focus();
+    
+
+    title.addEventListener('mouseenter', () => {
+        title.style.color = 'white';
+     title.style.backgroundColor = '#222';
+      title.style.padding = '4px 8px';
+      title.style.borderRadius = '6px';})
+    
+    title.addEventListener('mouseleave', () => {
+     title.style.color = ''
+     title.style.backgroundColor = '';
+      title.style.padding = '';
+  title.style.borderRadius = '';})
 
     let chatHistory = [];
 
@@ -278,7 +319,7 @@ function getChatHTML(): string {
       if (!text) return;
       addMessage('user', text);
       status.textContent = 'Thinking...';
-      vscode.postMessage({ command: 'groqChat', prompt: text});
+      vscode.postMessage({ command: 'groqChat', prompt: text, model : model.value});
       promptInput.value = '';
     }
 
@@ -297,6 +338,8 @@ function getChatHTML(): string {
       chatHistory = message.content;
       renderChatHistory();
       }
+
+      
 
 
     });

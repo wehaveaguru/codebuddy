@@ -35,8 +35,8 @@
     },
     "commands": [
       {
-        "command": "codebuddy.openchat",
-        "title": "CodeBuddy"
+        "command": "codebuddy.choosemodel",
+        "title": "Choose Model"
       }
     ]
     
