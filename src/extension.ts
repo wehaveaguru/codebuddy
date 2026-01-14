@@ -3,17 +3,48 @@ import OpenAI from 'openai';
 import * as path from 'path';
 import * as fs from 'fs';
 import { stringify } from 'querystring';
+import { ChatCompletionMessageParam } from 'openai/resources/chat/completions';
 
 
 
 export class ExtProvider implements vscode.WebviewViewProvider {
   private _view?: vscode.WebviewView;
-  private conversation: {role:"user"|"system"|"assistant"; content: string}[]=[
-    {
-      role:"system",
-      content: "You are codebuddy, an assistant for coding"
+  private conversation: ChatCompletionMessageParam[]=[{
+    role:"system",
+    content: "You are codebuddy, an AI assistant"
+  }]
+
+  private weather : any=
+        {
+          type : "function",
+            function : {
+            name : "get_weather",
+            description: "Call this to get weather data",
+            parameters: {
+              type : "object",
+              properties : {
+                city : { type : "string"}
+              },
+              required: ["city"]
+            }
+          }
+        }
+
+  private addCode : any = {
+    type:"function",
+    function: {
+      name: "add_code",
+      description: "Call this to create a new file in and paste the code, after giving confirmation",
+      parameters : {
+        type:"object",
+        properties: {
+          prompt : {type: "string"}
+        },
+        required: ["prompt"]
+      }
     }
-  ]
+  }
+      
   
 
   constructor (private readonly _extensionUri: vscode.Uri,private readonly _context: vscode.ExtensionContext) {
@@ -49,6 +80,7 @@ export class ExtProvider implements vscode.WebviewViewProvider {
 
     webviewView.webview.html=getChatHTML();
     setTimeout(() => {
+      console.log("recieived webview")
       this._view?.webview.postMessage({
         command:"loadHistory",
         content: this.conversation.filter(m => m.role !== "system")
@@ -60,7 +92,7 @@ export class ExtProvider implements vscode.WebviewViewProvider {
 
  
 
-  private async handleQuery(prompt: string, model? : string) {
+  private async handleQuery(prompt: string, modelSelected : string) {
     
     const apiKey ="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"
     if (!apiKey){
@@ -72,31 +104,39 @@ export class ExtProvider implements vscode.WebviewViewProvider {
     })
 
     
-    
-
     this.conversation.push({
       role: "user",
       content: prompt
     })
-    
-
     this.writeHistory(this.conversation);
+
+
     try {
     const response= await client.chat.completions.create({
-			model: model || 'anthropic/claude-3.5-sonnet',
+			model: modelSelected,
 			messages:this.conversation,
+      tools: [this.weather,this.addCode],
+      tool_choice:"auto",
 			max_tokens:1000,
 			temperature:0.7
 		})
+
     
-		const ans=  response.choices[0]?.message?.content||"NO answer";
+		const ans=response.choices[0]?.message?.content||"No answer";
+    const message=response.choices[0].message;
+    if (message.tool_calls && message.tool_calls.length>0){
+      await this.tool_calling(message,modelSelected);
+      return; 
+    }
+
     this.conversation.push({
       role: "assistant",
-      content: ans
+      content: ans 
     })
+
+    this._view?.webview.postMessage({command:"response",content:ans})
   
-  
-    
+
     this.writeHistory(this.conversation);
     
 		this._view?.webview.postMessage({command:"response",content:ans});
@@ -108,6 +148,70 @@ export class ExtProvider implements vscode.WebviewViewProvider {
 
 
 	}
+
+  private async tool_calling(message : any,modelSelected:string) {
+    
+      const tool:any =message.tool_calls[0];
+      console.log(message);
+      const args=JSON.parse(tool.function.arguments);
+      const city=args.city
+      const result =  await this.get_weather(city)
+      console.log(result)
+
+      this.conversation.push(message)
+
+      this.conversation.push({
+        role:"tool",
+        tool_call_id:tool.id,
+        content:JSON.stringify(result)
+      })
+      const apiKey="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"
+        
+      const client= new OpenAI({
+        apiKey,
+        baseURL:'https://openrouter.ai/api/v1'
+      })
+
+      const secondCall= await client.chat.completions.create({
+        model: modelSelected,
+        messages: this.conversation
+      })
+
+      const finalResponse= secondCall.choices[0].message.content
+      this.conversation.push({
+        role: "assistant",
+        content:finalResponse
+      })
+      this._view?.webview.postMessage({command:"response", content: finalResponse})
+      this.writeHistory(this.conversation)
+
+
+    
+  }
+
+private async get_weather(city : string): Promise <any>{
+  const api="6153b722b8864836a45111504261201";
+  const url = `http://api.weatherapi.com/v1/current.json?key=${api}&q=${city}&aqi=no`;
+
+  try {
+    const data= await fetch(url);
+    if (!data.ok) throw new Error(`HTTP Error!`)
+    const response: any= await data.json();
+    console.log(response);
+    return {
+      city: response.location.name,
+    country: response.location.country,
+    weather: response.current.condition.text,
+    temp: response.current.temp_c
+    }
+  }
+  catch {
+    console.log("Error in fetching data")
+    return;
+  }
+}
+
+
 
 private readHistory(): any[] {
     const filepath = this.getFilePath();
@@ -229,8 +333,8 @@ function getChatHTML(): string {
   <select id="modelSelect" 
           style="width: 100%; padding: 4px; background: var(--vscode-dropdown-background); color: var(--vscode-dropdown-foreground); border: 1px solid var(--vscode-dropdown-border); border-radius: 4px;">
     <option value="meta-llama/llama-3.3-70b-instruct">Llama</option>
-    <option value="mistralai/mixtral-8x7b-32768">Mistral Ai</option>
-    <option value="gemma-2-9b-it">Gemma</option>
+    <option value="mistralai/mixtral-8x7b-instruct">Mistral Ai</option>
+    <option value="google/gemma-2-9b-it">Gemma</option>
   </select>
 </div>
 <div style="display:flex; gap: 8px;">
@@ -280,6 +384,7 @@ function getChatHTML(): string {
     function renderChatHistory() {
       messagesEl.innerHTML = '';
       chatHistory.forEach(msg => {
+      if (!msg.content) return
         const div = document.createElement('div');
         div.className = 'msg-bubble ' + (msg.role === 'user' ? 'user' : 'bot');
         
