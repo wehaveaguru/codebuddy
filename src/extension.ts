@@ -11,7 +11,7 @@ export class ExtProvider implements vscode.WebviewViewProvider {
   private _view?: vscode.WebviewView;
   private conversation: ChatCompletionMessageParam[]=[{
     role:"system",
-    content: "You are codebuddy, an AI assistant"
+    content: "You are codebuddy. You MUST use the 'add_code' tool for all code generation. Never provide code blocks in your text responses."
   }]
 
   private weather : any=
@@ -23,7 +23,7 @@ export class ExtProvider implements vscode.WebviewViewProvider {
             parameters: {
               type : "object",
               properties : {
-                city : { type : "string"}
+                city : { type : "string", description:"The actual code to write"}
               },
               required: ["city"]
             }
@@ -34,13 +34,14 @@ export class ExtProvider implements vscode.WebviewViewProvider {
     type:"function",
     function: {
       name: "add_code",
-      description: "Call this to create a new file in and paste the code, after giving confirmation",
+      description: "MANDATORY: Call this function whenever you generate code. Do not wrap code in markdown; pass it directly to this tool.",
       parameters : {
         type:"object",
         properties: {
-          prompt : {type: "string"}
+          code : {type: "string"},
+          filename : {type: "string"}
         },
-        required: ["prompt"]
+        required: ["code","filename"]
       }
     }
   }
@@ -124,6 +125,7 @@ export class ExtProvider implements vscode.WebviewViewProvider {
     
 		const ans=response.choices[0]?.message?.content||"No answer";
     const message=response.choices[0].message;
+    console.log("Tool calls: "+message.tool_calls)
     if (message.tool_calls && message.tool_calls.length>0){
       await this.tool_calling(message,modelSelected);
       return; 
@@ -134,7 +136,7 @@ export class ExtProvider implements vscode.WebviewViewProvider {
       content: ans 
     })
 
-    this._view?.webview.postMessage({command:"response",content:ans})
+    
   
 
     this.writeHistory(this.conversation);
@@ -150,21 +152,33 @@ export class ExtProvider implements vscode.WebviewViewProvider {
 	}
 
   private async tool_calling(message : any,modelSelected:string) {
+    this.conversation.push(message)
+   for (const tool of message.tool_calls){
+        if (tool.function.name=='get_weather'){
+        const args=JSON.parse(tool.function.arguments);
+        const city=args.city
+        const result =  await this.get_weather(city)
+        
+        this.conversation.push({
+          role:"tool",
+          tool_call_id:tool.id,
+          content:JSON.stringify(result)
+        })
+        }
+
+        else if(tool.function.name=='add_code'){
+          const args=JSON.parse(tool.function.arguments)
+          const result= await this.add_code(args.code,args.filename)
+          this.conversation.push({
+            role:"tool",
+            tool_call_id:tool.id,
+            content: "Code showed to user"
+          })
+        }
+
+        
+   }
     
-      const tool:any =message.tool_calls[0];
-      console.log(message);
-      const args=JSON.parse(tool.function.arguments);
-      const city=args.city
-      const result =  await this.get_weather(city)
-      console.log(result)
-
-      this.conversation.push(message)
-
-      this.conversation.push({
-        role:"tool",
-        tool_call_id:tool.id,
-        content:JSON.stringify(result)
-      })
       const apiKey="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"
         
       const client= new OpenAI({
@@ -178,6 +192,8 @@ export class ExtProvider implements vscode.WebviewViewProvider {
       })
 
       const finalResponse= secondCall.choices[0].message.content
+      
+
       this.conversation.push({
         role: "assistant",
         content:finalResponse
@@ -211,11 +227,42 @@ private async get_weather(city : string): Promise <any>{
   }
 }
 
+private async add_code(code : string,filename : string){ 
+  const ws=vscode.workspace.workspaceFolders?.[0]
+  if (!ws) return undefined
+  const newfile=vscode.Uri.file(path.join(ws.uri.fsPath,filename)).with({scheme:"untitled"})
+
+  const doc =await vscode.workspace.openTextDocument(newfile)
+  
+  const edit= new vscode.WorkspaceEdit()
+
+  const text =edit.insert(newfile,new vscode.Position(0,0),code)
+  
+  const fullRange = new vscode.Range(
+        doc.positionAt(0),
+        doc.positionAt(doc.getText().length)
+    );
+    
+    edit.replace(newfile, fullRange, code);
+
+    
+    await vscode.workspace.applyEdit(edit);
+
+    
+    await vscode.window.showTextDocument(doc, {
+        viewColumn: vscode.ViewColumn.Beside,
+        preview: true,       
+
+    });
+
+
+ 
+   
+}
 
 
 private readHistory(): any[] {
     const filepath = this.getFilePath();
-    
     if (!filepath || !fs.existsSync(filepath)) {
         return [{
             role: "system",
@@ -248,6 +295,8 @@ private readHistory(): any[] {
 
     fs.writeFileSync(filepath,JSON.stringify(content, null,2),'utf-8');
   }
+
+  
 
   private getFilePath(){
     const workspace=vscode.workspace.workspaceFolders?.[0];
